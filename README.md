@@ -47,11 +47,23 @@ Set up automatic APT updates via systemd. Configure updates to run on boot or on
 
 ### 🧹 Disk Cleanup
 
-Clean up disk space by removing unnecessary files (coming soon).
+Clean up disk space by removing unnecessary files:
+- APT package cache
+- Old log files (journalctl, older than 7 days)
+- Temporary files (/tmp, /var/tmp, older than 7 days)
+- Old kernel packages (autoremove)
+
+**Note:** Requires root privileges. The tool will automatically prompt you to restart with sudo if needed.
 
 ### 📊 System Report
 
-Generate comprehensive system information reports (coming soon).
+Generate comprehensive system information reports including:
+- Operating system and kernel version
+- CPU information (model, cores, threads)
+- Memory usage (total, used, free)
+- Disk usage and filesystem information
+- Network interfaces and IP addresses
+- System uptime
 
 ## Project Structure
 
@@ -64,6 +76,8 @@ linux-utilities/
 │   ├── config.py          # Configuration constants
 │   ├── output.py          # Output formatting utilities
 │   ├── auto_update.py      # Auto-update functionality
+│   ├── disk_cleanup.py     # Disk cleanup functionality
+│   ├── system_report.py    # System report functionality
 │   └── utils.py            # Utility functions
 └── README.md
 ```

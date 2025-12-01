@@ -23,5 +23,6 @@ MENU_OPTIONS = {
 
 # Messages
 MSG_WAIT_KEY = "Press any key to return to menu..."
+MSG_RETURN_TO_MENU = "↩️  Press any key to return to menu..."
 MSG_EXITING = "Exiting..."
 

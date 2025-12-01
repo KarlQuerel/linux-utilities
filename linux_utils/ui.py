@@ -13,6 +13,7 @@ from linux_utils.config import (
     ESC_KEY,
     MENU_OPTIONS,
     MSG_WAIT_KEY,
+    MSG_RETURN_TO_MENU,
     MSG_EXITING,
     NC,
     BOLD,
@@ -80,24 +81,33 @@ def _get_display_width(text: str) -> int:
     return width
 
 
-def _get_menu_items() -> dict[str, str]:
-    """Get menu items with root warnings if needed."""
+def _get_menu_items() -> dict[str, tuple[str, bool]]:
+    """Get menu items with root requirement flags. Returns dict of (description, needs_sudo)."""
     from linux_utils.utils import is_root
     
     menu_items = {}
     for key, description in MENU_OPTIONS.items():
-        if key == "1" and not is_root():  # Auto-update requires root
-            menu_items[key] = f"{description} {YELLOW}(needs sudo){NC}"
-        else:
-            menu_items[key] = description
+        needs_sudo = (key == "1" or key == "2") and not is_root()
+        menu_items[key] = (description, needs_sudo)
     return menu_items
 
 
 def _get_menu_width() -> int:
     """Calculate the menu box width."""
     menu_items = _get_menu_items()
-    menu_lines = [f"  {key}. {description}" for key, description in menu_items.items()]
-    return max(_get_display_width(line) for line in menu_lines) + 8
+    sudo_text = f" {YELLOW}(needs sudo){NC}"
+    sudo_width = _get_display_width(sudo_text)
+    
+    max_width = 0
+    for key, (description, needs_sudo) in menu_items.items():
+        base_line = f"  {key}. {description}"
+        if needs_sudo:
+            line_width = _get_display_width(base_line) + sudo_width
+        else:
+            line_width = _get_display_width(base_line)
+        max_width = max(max_width, line_width)
+    
+    return max_width + 8
 
 
 def print_header() -> None:
@@ -124,26 +134,33 @@ def _draw_box_border(width: int, left: str, right: str) -> str:
     return left + "═" * (width - 2) + right
 
 
-def _print_menu_line(line: str, width: int) -> None:
-    """Print a single menu line with borders, centered."""
-    line_width = _get_display_width(line)
+def _print_menu_line(base_text: str, needs_sudo: bool, width: int) -> None:
+    """Print a single menu line with borders, with (needs sudo) right-aligned if needed."""
+    sudo_text = f"{YELLOW}(needs sudo){NC}"
+    base_width = _get_display_width(base_text)
+    sudo_width = _get_display_width(sudo_text) if needs_sudo else 0
+    
     # -3 accounts for: left border (1) + left space (1) + right border (1)
-    right_padding = max(0, width - line_width - 3)
+    available_width = width - 3
+    padding = max(0, available_width - base_width - sudo_width)
     
     print(format_unindented("║", BOLD_BLUE), end="")
-    print(f"{BOLD} {line}{' ' * right_padding}{NC}", end="")
+    if needs_sudo:
+        print(f"{BOLD} {base_text}{' ' * padding}{sudo_text}{NC}", end="")
+    else:
+        print(f"{BOLD} {base_text}{' ' * padding}{NC}", end="")
     print(format_unindented("║", BOLD_BLUE))
 
 
 def print_menu() -> None:
     """Print the main menu with retro pixel borders."""
     menu_items = _get_menu_items()
-    menu_lines = [f"  {key}. {description}" for key, description in menu_items.items()]
     width = _get_menu_width()
 
     print(format_unindented(_draw_box_border(width, "╔", "╗"), BOLD_BLUE))
-    for line in menu_lines:
-        _print_menu_line(line, width)
+    for key, (description, needs_sudo) in menu_items.items():
+        base_text = f"  {key}. {description}"
+        _print_menu_line(base_text, needs_sudo, width)
     print(format_unindented(_draw_box_border(width, "╚", "╝"), BOLD_BLUE))
     print()
 
@@ -157,32 +174,69 @@ def wait_for_key(message: str = MSG_WAIT_KEY) -> None:
 _CLEAR_LINE = "\r" + " " * 60 + "\r"
 
 
-def get_yes_no(prompt: str) -> bool:
-    """Get yes/no input without requiring Enter. Returns True for yes, False for no."""
+def _handle_esc_key() -> bool:
+    """Handle ESC key press. Returns True if ESC was pressed (should return None), False otherwise."""
+    if not getch_timeout(0.15):
+        print(_CLEAR_LINE, end="", flush=True)
+        return True
+    while getch_timeout(0.05):
+        pass
+    print(_CLEAR_LINE, end="", flush=True)
+    return True
+
+
+def _get_choice_with_esc(prompt: str, valid_choices: set[str]) -> str | None:
+    """Generic function to get choice with ESC handling."""
     while True:
         print(format_message(prompt), end="", flush=True)
-        choice = getch().strip().lower()
+        choice = getch()
+        
+        if ord(choice) == ESC_KEY:
+            if _handle_esc_key():
+                return None
+        
+        choice = choice.strip()
+        print(choice)
+        
+        if choice in valid_choices:
+            return choice
+        # Invalid choice, clear and retry
+        print(_CLEAR_LINE, end="", flush=True)
+
+
+def get_yes_no(prompt: str) -> bool | None:
+    """Get yes/no input without requiring Enter. Returns True for yes, False for no, None for ESC (return to menu)."""
+    while True:
+        print(format_message(prompt), end="", flush=True)
+        choice = getch()
+        
+        if ord(choice) == ESC_KEY:
+            if _handle_esc_key():
+                return None
+        
+        choice = choice.strip().lower()
         print(choice)
         
         if choice == 'y':
             return True
         if choice == 'n':
             return False
-        # Invalid choice, clear and retry
         print(_CLEAR_LINE, end="", flush=True)
 
 
-def get_choice_12(prompt: str) -> str:
-    """Get 1 or 2 choice without requiring Enter. Returns '1' or '2'."""
-    while True:
-        print(format_message(prompt), end="", flush=True)
-        choice = getch().strip()
-        print(choice)
-        
-        if choice in ('1', '2'):
-            return choice
-        # Invalid choice, clear and retry
-        print(_CLEAR_LINE, end="", flush=True)
+def get_choice_12(prompt: str) -> str | None:
+    """Get 1 or 2 choice without requiring Enter. Returns '1' or '2', None for ESC (return to menu)."""
+    return _get_choice_with_esc(prompt, {'1', '2'})
+
+
+def get_choice_15(prompt: str) -> str | None:
+    """Get 1-5 choice without requiring Enter. Returns '1'-'5', None for ESC (return to menu)."""
+    return _get_choice_with_esc(prompt, {'1', '2', '3', '4', '5'})
+
+
+def get_choice_16(prompt: str) -> str | None:
+    """Get 1-6 choice without requiring Enter. Returns '1'-'6', None for ESC (return to menu)."""
+    return _get_choice_with_esc(prompt, {'1', '2', '3', '4', '5', '6'})
 
 
 def exit_app(message: str = MSG_EXITING) -> None:
@@ -199,33 +253,14 @@ def run_auto_update() -> None:
 
 def run_disk_cleanup() -> None:
     """Run disk cleanup utility."""
-    print()
-    print(format_message("🧹 Disk Cleanup", BOLD_BLUE))
-    print()
-    print_info("This feature is coming soon!")
-    print()
-    print_bold("It will clean:")
-    print_bold("  • APT package cache")
-    print_bold("  • Old log files")
-    print_bold("  • Temporary files")
-    print_bold("  • Old kernel packages (optional)")
-    print()
+    from linux_utils.disk_cleanup import perform_disk_cleanup
+    perform_disk_cleanup()
 
 
 def run_system_report() -> None:
     """Run system report utility."""
-    print()
-    print(format_message("📊 System Report", BOLD_BLUE))
-    print()
-    print_info("This feature is coming soon!")
-    print()
-    print_bold("It will show:")
-    print_bold("  • System hardware information")
-    print_bold("  • OS version and kernel")
-    print_bold("  • Disk and memory usage")
-    print_bold("  • Network configuration")
-    print_bold("  • Running services")
-    print()
+    from linux_utils.system_report import generate_system_report
+    generate_system_report()
 
 
 def show_help() -> None:
@@ -242,11 +277,12 @@ def show_help() -> None:
     print()
     print_bold("2. 🧹 Disk Cleanup")
     print_bold("   - Clean up disk space by removing unnecessary files")
-    print_bold("   - Coming soon!")
+    print_bold("   - APT cache, old logs, temp files, old kernels")
+    print_bold("   - Requires root privileges")
     print()
     print_bold("3. 📊 System Report")
     print_bold("   - Generate comprehensive system information reports")
-    print_bold("   - Coming soon!")
+    print_bold("   - Shows OS, CPU, memory, disk, network, and uptime")
     print()
     print_bold("4. ❓ Help")
     print_bold("   - Shows this help information")
@@ -257,7 +293,8 @@ def show_help() -> None:
     
     print(format_message("Tips:"))
     print()
-    print_bold("• Press ESC to exit anytime")
+    print_bold("• Press ESC to return to menu at any time (during prompts)")
+    print_bold("• Press ESC in main menu to exit")
     print_bold("• Auto-Update will prompt for sudo automatically when needed")
     print_bold("• No need to run with sudo upfront - the tool handles it!")
     print()
@@ -276,7 +313,9 @@ def handle_menu_choice(choice: str) -> None:
         print()
         menu_actions[choice]()
         print()
-        wait_for_key()
+        print(format_message("─" * 50))
+        print()
+        wait_for_key(MSG_RETURN_TO_MENU)
     elif choice in ("q", "5"):
         exit_app()
 

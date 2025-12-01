@@ -1,7 +1,6 @@
 """Auto-update functionality - Set up automatic APT updates via systemd."""
 
 import os
-import sys
 import subprocess
 from pathlib import Path
 
@@ -14,17 +13,13 @@ from linux_utils.output import (
 )
 from linux_utils.config import BOLD_BLUE
 from linux_utils.ui import get_yes_no, get_choice_12
+from linux_utils.utils import is_root
 
 
 SERVICE_FILE = Path("/etc/systemd/system/auto-update.service")
 TIMER_FILE = Path("/etc/systemd/system/auto-update.timer")
 SERVICE_NAME = "auto-update.service"
 TIMER_NAME = "auto-update.timer"
-
-
-def check_root() -> bool:
-    """Check if running as root."""
-    return os.geteuid() == 0
 
 
 def disable_service_if_enabled(service_name: str) -> None:
@@ -62,10 +57,10 @@ WantedBy=multi-user.target
         print_success(f"Service file created at {SERVICE_FILE}")
     except PermissionError:
         print_error(f"Permission denied: Cannot write to {SERVICE_FILE}")
-        sys.exit(1)
+        return
     except Exception as e:
         print_error(f"Error creating service file: {e}")
-        sys.exit(1)
+        return
 
 
 def setup_boot_schedule() -> None:
@@ -84,6 +79,9 @@ def setup_boot_schedule() -> None:
         print()
         run_now = get_yes_no("Do you want to run the update now? (y/n): ")
         
+        if run_now is None:  # ESC pressed, return to menu
+            return
+        
         if run_now:
             print()
             print_bold(f"Starting {SERVICE_NAME}...")
@@ -96,7 +94,7 @@ def setup_boot_schedule() -> None:
         
     except subprocess.CalledProcessError as e:
         print_error(f"Error configuring service: {e}")
-        sys.exit(1)
+        return
 
 
 def setup_daily_schedule(hour: int) -> None:
@@ -164,13 +162,13 @@ WantedBy=timers.target
         
     except PermissionError:
         print_error(f"Permission denied: Cannot write to {TIMER_FILE}")
-        sys.exit(1)
+        return
     except subprocess.CalledProcessError as e:
         print_error(f"Error configuring timer: {e}")
-        sys.exit(1)
+        return
     except Exception as e:
         print_error(f"Error: {e}")
-        sys.exit(1)
+        return
 
 
 def print_helpful_commands(schedule_type: str) -> None:
@@ -191,8 +189,8 @@ def print_helpful_commands(schedule_type: str) -> None:
     print()
 
 
-def get_schedule_type() -> str:
-    """Get schedule type from user."""
+def get_schedule_type() -> str | None:
+    """Get schedule type from user. Returns None if ESC pressed (return to menu)."""
     print()
     print(format_message("📅 When should the update run?", BOLD_BLUE))
     print()
@@ -200,6 +198,8 @@ def get_schedule_type() -> str:
     print_bold("  • 2) 🕐 Daily at a specific hour")
     print()
     choice = get_choice_12("Enter your choice (1 or 2): ")
+    if choice is None:  # ESC pressed, return to menu
+        return None
     return "boot" if choice == "1" else "daily"
 
 
@@ -216,32 +216,45 @@ def get_hour() -> int:
         print_error("Invalid hour. Please enter a number between 0 and 23.")
 
 
+def _handle_root_requirement(menu_option: str) -> bool:
+    """Handle root requirement. Returns True if should continue, False if should return."""
+    if is_root():
+        return True
+    
+    print_error("This utility requires root privileges")
+    print()
+    print_info("Options:")
+    print_bold("  1. Restart with sudo (recommended)")
+    print_bold("  2. Run manually: sudo ./linux-utilities.py")
+    print()
+    
+    from linux_utils.utils import check_sudo_available, restart_with_sudo
+    
+    if not check_sudo_available():
+        print_error("sudo is not available on this system")
+        print_info("Please run this script as root")
+        return False
+    
+    restart_choice = get_yes_no("Restart with sudo now? (y/n): ")
+    if restart_choice is None:  # ESC pressed, return to menu
+        return False
+    
+    if restart_choice:
+        print()
+        print_info("Restarting with sudo...")
+        print()
+        restart_with_sudo(menu_option)
+        return False
+    
+    print()
+    print_info("Please run: sudo ./linux-utilities.py")
+    return False
+
+
 def setup_auto_update() -> None:
     """Main function to set up auto-update."""
-    if not check_root():
-        print_error("This utility requires root privileges")
-        print()
-        print_info("Options:")
-        print_bold("  1. Restart with sudo (recommended)")
-        print_bold("  2. Run manually: sudo ./linux-utilities.py")
-        print()
-        
-        from linux_utils.utils import check_sudo_available, restart_with_sudo
-        
-        if not check_sudo_available():
-            print_error("sudo is not available on this system")
-            print_info("Please run this script as root")
-            return
-        
-        if get_yes_no("Restart with sudo now? (y/n): "):
-            print()
-            print_info("Restarting with sudo...")
-            print()
-            restart_with_sudo('1')
-            return
-        
-        print()
-        print_info("Please run: sudo ./linux-utilities.py")
+    if not _handle_root_requirement('1'):
+        return
     
     print()
     print(format_message("🚀 Automatic APT Update & Upgrade Setup", BOLD_BLUE))
@@ -251,6 +264,8 @@ def setup_auto_update() -> None:
     
     # Get schedule type from user
     schedule_type = get_schedule_type()
+    if schedule_type is None:  # ESC pressed, return to menu
+        return
     
     # If daily, get the hour
     if schedule_type == "daily":
