@@ -12,6 +12,17 @@ from linux_utils.output import (
 from linux_utils.config import BOLD_BLUE, PREFIX_WIDTH
 
 
+# Constants
+COMMAND_TIMEOUT_SECONDS = 5
+
+# Standard system paths
+OS_RELEASE_PATH = Path("/etc/os-release")
+CPUINFO_PATH = Path("/proc/cpuinfo")
+LOADAVG_PATH = Path("/proc/loadavg")
+PROC_PATH = Path("/proc")
+UPTIME_PATH = Path("/proc/uptime")
+
+
 def _run_command(cmd: list[str], default: str = "N/A") -> str:
     """Run a command and return its output, or default if it fails."""
     try:
@@ -20,7 +31,7 @@ def _run_command(cmd: list[str], default: str = "N/A") -> str:
             capture_output=True,
             text=True,
             check=False,
-            timeout=5,
+            timeout=COMMAND_TIMEOUT_SECONDS,
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -34,10 +45,9 @@ def _get_os_info() -> dict[str, str]:
     info = {}
     
     # Try to read /etc/os-release
-    os_release = Path("/etc/os-release")
-    if os_release.exists():
+    if OS_RELEASE_PATH.exists():
         try:
-            content = os_release.read_text()
+            content = OS_RELEASE_PATH.read_text()
             for line in content.split('\n'):
                 if '=' in line and not line.startswith('#'):
                     key, value = line.split('=', 1)
@@ -73,10 +83,9 @@ def _get_cpu_info() -> dict[str, str]:
     info = {}
     
     # Try to read /proc/cpuinfo
-    cpuinfo = Path("/proc/cpuinfo")
-    if cpuinfo.exists():
+    if CPUINFO_PATH.exists():
         try:
-            content = cpuinfo.read_text()
+            content = CPUINFO_PATH.read_text()
             max_processor = -1
             for line in content.split('\n'):
                 if ':' in line:
@@ -148,8 +157,8 @@ def _get_disk_info() -> list[dict[str, str]]:
                 mount_point = parts[5]
                 filesystem = parts[0]
                 # Filter out virtual filesystems but keep important ones
-                skip_patterns = ['tmpfs', 'devtmpfs', 'sysfs', 'proc', 'devpts', 'cgroup']
-                if any(filesystem.startswith(pattern) for pattern in skip_patterns):
+                VIRTUAL_FS_PATTERNS = ['tmpfs', 'devtmpfs', 'sysfs', 'proc', 'devpts', 'cgroup']
+                if any(filesystem.startswith(pattern) for pattern in VIRTUAL_FS_PATTERNS):
                     continue
                 # Keep root, home, and other important mount points
                 if mount_point == '/' or mount_point.startswith('/home') or mount_point.startswith('/boot'):
@@ -209,10 +218,9 @@ def _get_network_info() -> dict[str, dict[str, str]]:
 
 def _get_load_average() -> str:
     """Get system load average."""
-    loadavg = Path("/proc/loadavg")
-    if loadavg.exists():
+    if LOADAVG_PATH.exists():
         try:
-            content = loadavg.read_text()
+            content = LOADAVG_PATH.read_text()
             parts = content.split()
             if len(parts) >= 3:
                 return f"{parts[0]}, {parts[1]}, {parts[2]}"
@@ -224,9 +232,8 @@ def _get_load_average() -> str:
 def _get_process_count() -> str:
     """Get number of running processes."""
     try:
-        proc = Path("/proc")
-        if proc.exists():
-            count = sum(1 for p in proc.iterdir() if p.name.isdigit())
+        if PROC_PATH.exists():
+            count = sum(1 for p in PROC_PATH.iterdir() if p.name.isdigit())
             return str(count)
     except Exception:
         pass
@@ -259,7 +266,7 @@ def _get_logged_in_users() -> str:
 
 def _get_boot_time() -> str:
     """Get system boot time."""
-    uptime_sec = _run_command(["cat", "/proc/uptime"])
+    uptime_sec = _run_command(["cat", str(UPTIME_PATH)])
     if uptime_sec != "N/A":
         try:
             seconds = float(uptime_sec.split()[0])
@@ -273,7 +280,7 @@ def _get_boot_time() -> str:
 
 def _get_uptime() -> str:
     """Get system uptime."""
-    uptime_sec = _run_command(["cat", "/proc/uptime"])
+    uptime_sec = _run_command(["cat", str(UPTIME_PATH)])
     if uptime_sec != "N/A":
         try:
             seconds = float(uptime_sec.split()[0])

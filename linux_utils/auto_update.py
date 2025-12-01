@@ -16,10 +16,13 @@ from linux_utils.ui import get_yes_no, get_choice_12
 from linux_utils.utils import is_root
 
 
-SERVICE_FILE = Path("/etc/systemd/system/auto-update.service")
-TIMER_FILE = Path("/etc/systemd/system/auto-update.timer")
+# Systemd paths and service names
+SYSTEMD_DIR = Path("/etc/systemd/system")
+SERVICE_FILE = SYSTEMD_DIR / "auto-update.service"
+TIMER_FILE = SYSTEMD_DIR / "auto-update.timer"
 SERVICE_NAME = "auto-update.service"
 TIMER_NAME = "auto-update.timer"
+APT_UPDATE_CMD = '/bin/bash -c "export DEBIAN_FRONTEND=noninteractive; apt update; apt upgrade -y"'
 
 
 def disable_service_if_enabled(service_name: str) -> None:
@@ -38,14 +41,14 @@ def disable_service_if_enabled(service_name: str) -> None:
 
 def create_service_file() -> None:
     """Create the systemd service file."""
-    service_content = """[Unit]
+    service_content = f"""[Unit]
 Description=Automatic APT Update and Upgrade
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c "export DEBIAN_FRONTEND=noninteractive; apt update; apt upgrade -y"
+ExecStart={APT_UPDATE_CMD}
 User=root
 
 [Install]

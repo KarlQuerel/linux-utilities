@@ -12,7 +12,6 @@ from linux_utils.config import (
     YELLOW,
     ESC_KEY,
     MENU_OPTIONS,
-    MSG_WAIT_KEY,
     MSG_RETURN_TO_MENU,
     MSG_EXITING,
     NC,
@@ -22,7 +21,6 @@ from linux_utils.output import (
     format_message,
     format_unindented,
     print_bold,
-    print_info,
 )
 
 
@@ -63,8 +61,8 @@ def clear_screen() -> None:
 
 def _strip_ansi(text: str) -> str:
     """Remove ANSI color codes from text."""
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    return ansi_escape.sub("", text)
 
 
 def _get_display_width(text: str) -> int:
@@ -74,7 +72,7 @@ def _get_display_width(text: str) -> int:
     width = 0
     for char in text:
         # Check if character is an emoji or wide character
-        if unicodedata.east_asian_width(char) in ('W', 'F'):
+        if unicodedata.east_asian_width(char) in ("W", "F"):
             width += 2  # Wide characters (including most emojis) take 2 columns
         else:
             width += 1  # Regular characters take 1 column
@@ -84,7 +82,7 @@ def _get_display_width(text: str) -> int:
 def _get_menu_items() -> dict[str, tuple[str, bool]]:
     """Get menu items with root requirement flags. Returns dict of (description, needs_sudo)."""
     from linux_utils.utils import is_root
-    
+
     menu_items = {}
     for key, description in MENU_OPTIONS.items():
         needs_sudo = (key == "1" or key == "2") and not is_root()
@@ -97,7 +95,7 @@ def _get_menu_width() -> int:
     menu_items = _get_menu_items()
     sudo_text = f" {YELLOW}(needs sudo){NC}"
     sudo_width = _get_display_width(sudo_text)
-    
+
     max_width = 0
     for key, (description, needs_sudo) in menu_items.items():
         base_line = f"  {key}. {description}"
@@ -106,7 +104,7 @@ def _get_menu_width() -> int:
         else:
             line_width = _get_display_width(base_line)
         max_width = max(max_width, line_width)
-    
+
     return max_width + 8
 
 
@@ -119,13 +117,17 @@ def print_header() -> None:
         "   ▙▖▟▖▌▝▌▙▌▌▌  ▙▌▐ ▟▖▙▖▟▖▐ ▟▖▙▖▄▌",
     ]
     menu_width = _get_menu_width()
-    
+
     for line in header_art:
         stripped = line.lstrip()
         line_width = _get_display_width(stripped)
         left_padding = (menu_width - line_width) // 2
         right_padding = menu_width - line_width - left_padding
-        print(format_unindented(" " * left_padding + stripped + " " * right_padding, BOLD_BLUE))
+        print(
+            format_unindented(
+                " " * left_padding + stripped + " " * right_padding, BOLD_BLUE
+            )
+        )
     print()
 
 
@@ -139,11 +141,11 @@ def _print_menu_line(base_text: str, needs_sudo: bool, width: int) -> None:
     sudo_text = f"{YELLOW}(needs sudo){NC}"
     base_width = _get_display_width(base_text)
     sudo_width = _get_display_width(sudo_text) if needs_sudo else 0
-    
+
     # -3 accounts for: left border (1) + left space (1) + right border (1)
     available_width = width - 3
     padding = max(0, available_width - base_width - sudo_width)
-    
+
     print(format_unindented("║", BOLD_BLUE), end="")
     if needs_sudo:
         print(f"{BOLD} {base_text}{' ' * padding}{sudo_text}{NC}", end="")
@@ -165,21 +167,26 @@ def print_menu() -> None:
     print()
 
 
-def wait_for_key(message: str = MSG_WAIT_KEY) -> None:
+def wait_for_key(message: str = MSG_RETURN_TO_MENU) -> None:
     """Wait for user to press any key."""
     print(format_message(message), end="", flush=True)
     getch()
 
 
-_CLEAR_LINE = "\r" + " " * 60 + "\r"
+# Constants for UI behavior
+CLEAR_LINE_WIDTH = 60
+ESC_TIMEOUT_SHORT = 0.15
+ESC_TIMEOUT_LONG = 0.05
+
+_CLEAR_LINE = "\r" + " " * CLEAR_LINE_WIDTH + "\r"
 
 
 def _handle_esc_key() -> bool:
     """Handle ESC key press. Returns True if ESC was pressed (should return None), False otherwise."""
-    if not getch_timeout(0.15):
+    if not getch_timeout(ESC_TIMEOUT_SHORT):
         print(_CLEAR_LINE, end="", flush=True)
         return True
-    while getch_timeout(0.05):
+    while getch_timeout(ESC_TIMEOUT_LONG):
         pass
     print(_CLEAR_LINE, end="", flush=True)
     return True
@@ -190,14 +197,14 @@ def _get_choice_with_esc(prompt: str, valid_choices: set[str]) -> str | None:
     while True:
         print(format_message(prompt), end="", flush=True)
         choice = getch()
-        
+
         if ord(choice) == ESC_KEY:
             if _handle_esc_key():
                 return None
-        
+
         choice = choice.strip()
         print(choice)
-        
+
         if choice in valid_choices:
             return choice
         # Invalid choice, clear and retry
@@ -209,34 +216,29 @@ def get_yes_no(prompt: str) -> bool | None:
     while True:
         print(format_message(prompt), end="", flush=True)
         choice = getch()
-        
+
         if ord(choice) == ESC_KEY:
             if _handle_esc_key():
                 return None
-        
+
         choice = choice.strip().lower()
         print(choice)
-        
-        if choice == 'y':
+
+        if choice == "y":
             return True
-        if choice == 'n':
+        if choice == "n":
             return False
         print(_CLEAR_LINE, end="", flush=True)
 
 
 def get_choice_12(prompt: str) -> str | None:
     """Get 1 or 2 choice without requiring Enter. Returns '1' or '2', None for ESC (return to menu)."""
-    return _get_choice_with_esc(prompt, {'1', '2'})
-
-
-def get_choice_15(prompt: str) -> str | None:
-    """Get 1-5 choice without requiring Enter. Returns '1'-'5', None for ESC (return to menu)."""
-    return _get_choice_with_esc(prompt, {'1', '2', '3', '4', '5'})
+    return _get_choice_with_esc(prompt, {"1", "2"})
 
 
 def get_choice_16(prompt: str) -> str | None:
     """Get 1-6 choice without requiring Enter. Returns '1'-'6', None for ESC (return to menu)."""
-    return _get_choice_with_esc(prompt, {'1', '2', '3', '4', '5', '6'})
+    return _get_choice_with_esc(prompt, {"1", "2", "3", "4", "5", "6"})
 
 
 def exit_app(message: str = MSG_EXITING) -> None:
@@ -248,18 +250,21 @@ def exit_app(message: str = MSG_EXITING) -> None:
 def run_auto_update() -> None:
     """Run the auto-update setup."""
     from linux_utils.auto_update import setup_auto_update
+
     setup_auto_update()
 
 
 def run_disk_cleanup() -> None:
     """Run disk cleanup utility."""
     from linux_utils.disk_cleanup import perform_disk_cleanup
+
     perform_disk_cleanup()
 
 
 def run_system_report() -> None:
     """Run system report utility."""
     from linux_utils.system_report import generate_system_report
+
     generate_system_report()
 
 
@@ -290,7 +295,7 @@ def show_help() -> None:
     print_bold("5. 🚪 Exit")
     print_bold("   - Exits the application")
     print()
-    
+
     print(format_message("Tips:"))
     print()
     print_bold("• Press ESC to return to menu at any time (during prompts)")
@@ -308,7 +313,7 @@ def handle_menu_choice(choice: str) -> None:
         "3": run_system_report,
         "4": show_help,
     }
-    
+
     if choice in menu_actions:
         print()
         menu_actions[choice]()
@@ -327,9 +332,9 @@ def get_user_choice() -> str:
         choice = getch()
 
         if ord(choice) == ESC_KEY:
-            if not getch_timeout(0.15):
+            if not getch_timeout(ESC_TIMEOUT_SHORT):
                 exit_app()
-            while getch_timeout(0.05):
+            while getch_timeout(ESC_TIMEOUT_LONG):
                 pass
             print(_CLEAR_LINE, end="", flush=True)
             continue
@@ -340,4 +345,3 @@ def get_user_choice() -> str:
             return choice
 
         print(_CLEAR_LINE, end="", flush=True)
-

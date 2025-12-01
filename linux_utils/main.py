@@ -2,6 +2,7 @@
 
 import sys
 
+from linux_utils.config import OPTION_FLAG
 from linux_utils.ui import (
     clear_screen,
     print_header,
@@ -15,8 +16,8 @@ def main() -> None:
     """Main entry point."""
     # Check for command-line arguments to jump to a menu option
     jump_to_option = None
-    if '--option' in sys.argv:
-        idx = sys.argv.index('--option')
+    if OPTION_FLAG in sys.argv:
+        idx = sys.argv.index(OPTION_FLAG)
         if idx + 1 < len(sys.argv):
             jump_to_option = sys.argv[idx + 1]
     

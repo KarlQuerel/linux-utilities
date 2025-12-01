@@ -6,6 +6,6 @@ Run with: ./linux-utilities.py
 
 from linux_utils.main import main
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
