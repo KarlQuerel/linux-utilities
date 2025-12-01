@@ -164,7 +164,6 @@ def print_menu() -> None:
         base_text = f"  {key}. {description}"
         _print_menu_line(base_text, needs_sudo, width)
     print(format_unindented(_draw_box_border(width, "╚", "╝"), BOLD_BLUE))
-    print()
 
 
 def wait_for_key(message: str = MSG_RETURN_TO_MENU) -> None:
@@ -201,34 +200,24 @@ def _get_choice_with_esc(prompt: str, valid_choices: set[str]) -> str | None:
         if ord(choice) == ESC_KEY:
             if _handle_esc_key():
                 return None
+            continue  # ESC handled, continue to next iteration
 
         choice = choice.strip()
-        print(choice)
 
+        # Only print and accept valid choices
         if choice in valid_choices:
+            print(choice)
             return choice
-        # Invalid choice, clear and retry
+        # Invalid choice - silently ignore, don't print anything
         print(_CLEAR_LINE, end="", flush=True)
 
 
 def get_yes_no(prompt: str) -> bool | None:
     """Get yes/no input without requiring Enter. Returns True for yes, False for no, None for ESC (return to menu)."""
-    while True:
-        print(format_message(prompt), end="", flush=True)
-        choice = getch()
-
-        if ord(choice) == ESC_KEY:
-            if _handle_esc_key():
-                return None
-
-        choice = choice.strip().lower()
-        print(choice)
-
-        if choice == "y":
-            return True
-        if choice == "n":
-            return False
-        print(_CLEAR_LINE, end="", flush=True)
+    choice = _get_choice_with_esc(prompt, {"y", "n"})
+    if choice is None:
+        return None
+    return choice == "y"
 
 
 def get_choice_12(prompt: str) -> str | None:
@@ -315,11 +304,8 @@ def handle_menu_choice(choice: str) -> None:
     }
 
     if choice in menu_actions:
-        print()
         menu_actions[choice]()
-        print()
         print(format_message("─" * 50))
-        print()
         wait_for_key(MSG_RETURN_TO_MENU)
     elif choice in ("q", "5"):
         exit_app()
@@ -327,6 +313,7 @@ def handle_menu_choice(choice: str) -> None:
 
 def get_user_choice() -> str:
     """Get user menu choice."""
+    valid_choices = {"1", "2", "3", "4", "5", "q"}
     while True:
         print(format_message("  Press [1-5] to select: "), end="", flush=True)
         choice = getch()
@@ -340,8 +327,9 @@ def get_user_choice() -> str:
             continue
 
         choice = choice.strip().lower()
-        if choice in ("1", "2", "3", "4", "5", "q"):
+        # Only print and accept valid choices
+        if choice in valid_choices:
             print(choice)
             return choice
-
+        # Invalid choice - silently ignore, don't print anything
         print(_CLEAR_LINE, end="", flush=True)

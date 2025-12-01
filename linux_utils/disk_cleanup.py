@@ -13,8 +13,23 @@ from linux_utils.output import (
     format_message,
 )
 from linux_utils.config import BOLD_BLUE, GREEN
-from linux_utils.ui import get_yes_no, get_choice_16, clear_screen, getch
-from linux_utils.utils import is_root
+from linux_utils.ui import (
+    get_yes_no,
+    get_choice_16,
+    clear_screen,
+    getch,
+    print_header,
+    print_menu,
+)
+from linux_utils.utils import handle_root_requirement
+
+# Constants for cleanup operations
+LOG_RETENTION_DAYS = 7
+TEMP_FILE_AGE_DAYS = 7
+DRY_RUN_ESTIMATE_RATIO = 0.5  # Assume we can free 50% by keeping last N days
+SECONDS_PER_DAY = 24 * 60 * 60
+KERNEL_SIZE_ESTIMATE = 200 * 1024 * 1024  # 200MB per kernel
+MIN_KERNELS_TO_KEEP = 2  # Keep current + 1 backup
 
 
 def _get_directory_size(path: Path) -> int:
@@ -88,8 +103,6 @@ def _parse_journal_size(output: str) -> int:
 
 def _clean_old_logs(dry_run: bool = False) -> int:
     """Clean old log files. Returns bytes freed."""
-    LOG_RETENTION_DAYS = 7
-    DRY_RUN_ESTIMATE_RATIO = 0.5  # Assume we can free 50% by keeping last N days
 
     try:
         result = subprocess.run(
@@ -140,9 +153,6 @@ def _clean_old_logs(dry_run: bool = False) -> int:
 
 def _clean_temp_files(dry_run: bool = False) -> int:
     """Clean temporary files. Returns bytes freed."""
-    TEMP_FILE_AGE_DAYS = 7
-    SECONDS_PER_DAY = 24 * 60 * 60
-
     temp_dirs = [
         Path("/tmp"),
         Path("/var/tmp"),
@@ -191,9 +201,6 @@ def _count_installed_kernels(output: str) -> int:
 
 def _clean_old_kernels(dry_run: bool = False) -> int:
     """Clean old kernel packages. Returns bytes freed."""
-    KERNEL_SIZE_ESTIMATE = 200 * 1024 * 1024  # 200MB per kernel
-    MIN_KERNELS_TO_KEEP = 2  # Keep current + 1 backup
-
     if dry_run:
         # Estimate: check installed kernels
         try:
@@ -252,19 +259,18 @@ def _clean_old_kernels(dry_run: bool = False) -> int:
 def _get_cleanup_options(show_header: bool = True) -> dict[str, bool] | None:
     """Get cleanup options from user with multi-selection. Returns None if ESC pressed (return to menu)."""
     selected = {"apt": False, "logs": False, "temp": False, "kernels": False}
-    first_iteration = True
 
     while True:
-        if not first_iteration:
-            clear_screen()
-            if show_header:
-                print()
-                print(format_message("🧹 Disk Cleanup", BOLD_BLUE))
-                print()
+        clear_screen()
 
-        print()
+        # Always show main header and menu
+        print_header()
+        print_menu()
+
+        if show_header:
+            print(format_message("🧹 Disk Cleanup", BOLD_BLUE))
+
         print(format_message("Select what to clean:", BOLD_BLUE))
-        print()
 
         # Show options with checkmarks for selected items (green and bold when selected)
         # Always keep everything bold - don't use NC to reset formatting
@@ -282,7 +288,6 @@ def _get_cleanup_options(show_header: bool = True) -> dict[str, bool] | None:
         print_bold(f"  • 4) [{check_kernels}] 🪶 Old kernel packages (autoremove)")
         print_bold("  • 5) ✅ All of the above (and proceed)")
         print_bold("  • 6) ▶️  Proceed with selected options")
-        print()
 
         # Show current selection status
         selected_count = sum(selected.values())
@@ -297,23 +302,20 @@ def _get_cleanup_options(show_header: bool = True) -> dict[str, bool] | None:
                 option_names[key] for key, value in selected.items() if value
             ]
             print_info(f"Selected: {', '.join(selected_items)}")
-            print()
 
         choice = get_choice_16("Enter your choice (1-6): ")
         if choice is None:  # ESC pressed, return to menu
             return None
 
-        # Mark that we've made a selection (so next iteration will clear screen)
-        first_iteration = False
-
-        if choice == "1":
-            selected["apt"] = not selected["apt"]  # Toggle
-        elif choice == "2":
-            selected["logs"] = not selected["logs"]  # Toggle
-        elif choice == "3":
-            selected["temp"] = not selected["temp"]  # Toggle
-        elif choice == "4":
-            selected["kernels"] = not selected["kernels"]  # Toggle
+        # Toggle options 1-4
+        option_map = {
+            "1": "apt",
+            "2": "logs",
+            "3": "temp",
+            "4": "kernels",
+        }
+        if choice in option_map:
+            selected[option_map[choice]] = not selected[option_map[choice]]
         elif choice == "5":
             # Select all and proceed
             selected = {"apt": True, "logs": True, "temp": True, "kernels": True}
@@ -344,49 +346,12 @@ def _get_cleanup_options(show_header: bool = True) -> dict[str, bool] | None:
             return selected
 
 
-def _handle_root_requirement(menu_option: str) -> bool:
-    """Handle root requirement. Returns True if should continue, False if should return."""
-    if is_root():
-        return True
-
-    print_error("This utility requires root privileges")
-    print()
-    print_info("Options:")
-    print_bold("  1. Restart with sudo (recommended)")
-    print_bold("  2. Run manually: sudo ./linux-utilities.py")
-    print()
-
-    from linux_utils.utils import check_sudo_available, restart_with_sudo
-
-    if not check_sudo_available():
-        print_error("sudo is not available on this system")
-        print_info("Please run this script as root")
-        return False
-
-    restart_choice = get_yes_no("Restart with sudo now? (y/n): ")
-    if restart_choice is None:  # ESC pressed, return to menu
-        return False
-
-    if restart_choice:
-        print()
-        print_info("Restarting with sudo...")
-        print()
-        restart_with_sudo(menu_option)
-        return False
-
-    print()
-    print_info("Please run: sudo ./linux-utilities.py")
-    return False
-
-
 def perform_disk_cleanup(dry_run: bool = False) -> None:
     """Main function to perform disk cleanup."""
-    if not _handle_root_requirement("2"):
+    if not handle_root_requirement("2"):
         return
 
-    print()
     print(format_message("🧹 Disk Cleanup", BOLD_BLUE))
-    print()
 
     if dry_run:
         print_info("🔍 Dry run mode - no files will be deleted")

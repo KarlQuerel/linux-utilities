@@ -43,3 +43,39 @@ def check_sudo_available() -> bool:
     except Exception:
         return False
 
+
+def handle_root_requirement(menu_option: str) -> bool:
+    """Handle root requirement. Returns True if should continue, False if should return."""
+    from linux_utils.output import print_error, print_info, print_bold
+    from linux_utils.ui import get_yes_no
+    
+    if is_root():
+        return True
+
+    print_error("This utility requires root privileges")
+    print()
+    print_info("Options:")
+    print_bold("  1. Restart with sudo (recommended)")
+    print_bold("  2. Run manually: sudo ./linux-utilities.py")
+    print()
+
+    if not check_sudo_available():
+        print_error("sudo is not available on this system")
+        print_info("Please run this script as root")
+        return False
+
+    restart_choice = get_yes_no("Restart with sudo now? (y/n): ")
+    if restart_choice is None:  # ESC pressed, return to menu
+        return False
+
+    if restart_choice:
+        print()
+        print_info("Restarting with sudo...")
+        print()
+        restart_with_sudo(menu_option)
+        return False
+
+    print()
+    print_info("Please run: sudo ./linux-utilities.py")
+    return False
+

@@ -317,9 +317,7 @@ def _print_section(title: str) -> None:
 
 def generate_system_report() -> None:
     """Generate and display comprehensive system report."""
-    print()
     print(format_message("📊 System Report", BOLD_BLUE))
-    print()
     
     # OS Information
     _print_section("Operating System")
@@ -388,6 +386,4 @@ def generate_system_report() -> None:
     _print_info_line("  - Processes:", process_count)
     users = _get_logged_in_users()
     _print_info_line("  - Logged In Users:", users)
-    
-    print()
 
