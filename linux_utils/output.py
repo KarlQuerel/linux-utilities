@@ -1,6 +1,6 @@
 """Output formatting and printing utilities."""
 
-from linux_utils.config import BOLD, GREEN, RED, YELLOW, NC
+from linux_utils.config import BOLD, GREEN, RED, NC
 
 
 def _ensure_indent(message: str) -> str:
@@ -38,9 +38,4 @@ def print_success(message: str) -> None:
 def print_info(message: str) -> None:
     """Print info message in bold with 2-space indent."""
     print(format_message(message))
-
-
-def print_warning(message: str) -> None:
-    """Print warning message in yellow and bold with 2-space indent."""
-    print(format_message(f"⚠️  {message}", YELLOW))
 

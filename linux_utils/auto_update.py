@@ -1,6 +1,5 @@
 """Auto-update functionality - Set up automatic APT updates via systemd."""
 
-import os
 import subprocess
 from pathlib import Path
 

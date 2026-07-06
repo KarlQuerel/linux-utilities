@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 
 from linux_utils.output import (
-    print_bold,
     format_message,
 )
 from linux_utils.config import BOLD_BLUE, PREFIX_WIDTH
